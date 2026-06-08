@@ -5,6 +5,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 from abc import ABC
 import re
+from datetime import datetime
 
 load_dotenv()
 
@@ -20,21 +21,48 @@ def parse_price(price_str):
     
 def parse_duration(duration_str):
     duration_str = duration_str.strip().lower()
+    
+    if not duration_str or duration_str == "n/a":
+        return 0
+        
     hours = 0
     minutes = 0
-    if "h" in duration_str:
-        hours = int(duration_str.split("h")[0].strip())
-    if "m" in duration_str:
-        minutes = int(duration_str.split("m")[0].split("h")[-1].strip())
-    return hours * 60 + minutes
+    
+    hours_match = re.search(r"(\d+)\s*h", duration_str)
+    minutes_match = re.search(r"(\d+)\s*m", duration_str)
+    
+    if hours_match:
+        hours = int(hours_match.group(1))
+    if minutes_match:
+        minutes = int(minutes_match.group(1))
+    #fallbback    
+    if hours == 0 and minutes == 0:
+        digits = re.findall(r"\d+", duration_str)
+        
+        if len(digits) == 2:    
+            hours = int(digits[0])
+            minutes = int(digits[1])
+        elif len(digits) == 1:  # e.g., 45 = 45m or 2 = 2h
+            val = int(digits[0])
+            if val > 12:
+                minutes = val
+            else:
+                hours = val
 
+    return (hours * 60) + minutes
 
-def parse_stops(stops_str):
-    if stops_str.strip().lower() in ["direct", "n/a", "nonstop", ""]:
+def parse_stops(stops_input) -> int:
+    stops_str = str(stops_input).strip().lower()
+    
+    if any(x in stops_str for x in ["direct", "n/a", "nonstop", ""]):
         return 0
+        
     try:
         return int(stops_str)
     except ValueError:
+        match = re.search(r'\d+', stops_str)
+        if match:
+            return int(match.group())
         return 0
 
 class FlightModel(Base):
@@ -78,7 +106,8 @@ class FlightModel(Base):
             return_dep       = f["return_dep"],
             return_arr       = f["return_arr"],
             return_duration  = parse_duration(f["return_duration"]),
-            return_stops     = parse_stops(f["return_stops"])
+            return_stops     = parse_stops(f["return_stops"]),
+            scraped_at       = datetime.now()
         )
     
     
